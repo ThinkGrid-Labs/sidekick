@@ -1,18 +1,35 @@
 {
-  "name": "nodejs",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@sidekick-flags/node",
+  "version": "0.1.0",
+  "description": "Sidekick feature-flag SDK for Node.js \u2014 local evaluation via Rust NAPI.",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "types": "index.d.ts",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "napi": {
+    "name": "sidekick",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl"
+      ]
+    }
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@napi-rs/cli": "^3.5.1"
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
   },
   "dependencies": {
     "eventsource": "^4.1.0"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.5.1"
   }
 }

@@ -1,0 +1,36 @@
+name: Release React Native SDK
+
+# Triggered by version tags: v1.2.3
+on:
+  push:
+    tags: ["v*.*.*"]
+
+# The React Native SDK ships JS + C++/Rust source files to npm.
+# Native compilation (JSI .so / .a) happens inside the consuming app's
+# Xcode / Gradle build via the included CMakeLists.txt / Podspec,
+# so no cross-compilation matrix is required here.
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Set version from tag
+        working-directory: sdks/react-native
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish @sidekick-flags/react-native
+        working-directory: sdks/react-native
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

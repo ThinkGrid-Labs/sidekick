@@ -1,0 +1,138 @@
+name: Release Node.js SDK
+
+# Triggered by version tags: v1.2.3
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the native .node binary for each platform in parallel
+  # ---------------------------------------------------------------------------
+  build-native:
+    name: Build — ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64 (glibc)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: sidekick.linux-x64-gnu.node
+
+          # Linux arm64 (glibc) — cross-compile on x64 runner
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact: sidekick.linux-arm64-gnu.node
+            cross: true
+
+          # Linux x64 (musl — Alpine)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: sidekick.linux-x64-musl.node
+            cross: true
+
+          # Linux arm64 (musl — Alpine)
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: sidekick.linux-arm64-musl.node
+            cross: true
+
+          # macOS x64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: sidekick.darwin-x64.node
+
+          # macOS arm64 (Apple Silicon)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: sidekick.darwin-arm64.node
+
+          # Windows x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: sidekick.win32-x64-msvc.node
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross (for cross-compilation targets)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install @napi-rs/cli
+        working-directory: sdks/nodejs
+        run: npm install -g @napi-rs/cli
+
+      - name: Build native binary (native target)
+        if: ${{ !matrix.cross }}
+        working-directory: sdks/nodejs
+        run: napi build --platform --release --target ${{ matrix.target }}
+
+      - name: Build native binary (cross target)
+        if: matrix.cross
+        working-directory: sdks/nodejs
+        run: napi build --platform --release --target ${{ matrix.target }} --cross-compile
+        env:
+          CROSS_CONTAINER_OPTS: "--platform linux/amd64"
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-${{ matrix.target }}
+          path: sdks/nodejs/${{ matrix.artifact }}
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Collect all .node binaries and publish to npm
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish to npm
+    needs: build-native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: node-*
+          merge-multiple: true
+          path: sdks/nodejs/
+
+      - name: Install dependencies
+        working-directory: sdks/nodejs
+        run: npm install
+
+      - name: Set version from tag
+        working-directory: sdks/nodejs
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish @sidekick-flags/node
+        working-directory: sdks/nodejs
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

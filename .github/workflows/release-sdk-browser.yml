@@ -1,0 +1,46 @@
+name: Release Browser SDK
+
+# Triggered by version tags: v1.2.3
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  publish:
+    name: Build WASM and publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Build WASM (web target)
+        working-directory: sdks/browser
+        run: wasm-pack build --target web --out-name sidekick --out-dir dist --release
+
+      - name: Set version from tag
+        working-directory: sdks/browser
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Publish @sidekick-flags/browser
+        working-directory: sdks/browser
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
