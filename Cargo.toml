@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "core",
+    "server",
+    "sdks/nodejs",
+    "sdks/browser",
+    "sdks/flutter",
+    "sdks/react-native",
+]
+resolver = "2"

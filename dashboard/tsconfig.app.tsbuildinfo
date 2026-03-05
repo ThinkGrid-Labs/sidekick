@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/components/layout.tsx","./src/components/ruleeditor.tsx","./src/pages/flageditor.tsx","./src/pages/flaglist.tsx","./src/pages/settings.tsx"],"version":"5.9.3"}

@@ -1,0 +1,16 @@
+# Rust
+target/
+Cargo.lock
+
+# Node / pnpm
+dashboard/node_modules/
+dashboard/.pnpm-store/
+server/public/
+
+# macOS
+.DS_Store
+
+# Env files
+.env
+.env.*
+!.env.example

@@ -1,0 +1,66 @@
+name: Publish SDKs
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-nodejs-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build NAPI
+        run: |
+          cd sdks/nodejs
+          npm install
+          npx napi build --release
+      - name: Publish to NPM
+        run: |
+          cd sdks/nodejs
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-browser-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build Wasm
+        run: |
+          cd sdks/browser
+          wasm-pack build --target web --out-name sidekick --out-dir dist
+      - name: Publish to NPM
+        run: |
+          cd sdks/browser
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-flutter-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Publish to Pub.dev
+        run: |
+          cd sdks/flutter
+          dart pub publish --force
+        env:
+          PUB_CREDENTIALS: ${{ secrets.PUB_CREDENTIALS }}

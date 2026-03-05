@@ -1,0 +1,12 @@
+[package]
+name = "nodejs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3.8.3", features = ["napi2", "napi3"] }
+napi-derive = "3.5.2"
+sidekick-core = { version = "0.1.0", path = "../../core" }

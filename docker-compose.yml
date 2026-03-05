@@ -1,0 +1,66 @@
+# docker-compose.yml — server-only variant
+#
+# Runs the Sidekick server image alongside managed PostgreSQL and Redis
+# containers. Use this when you want Compose to own the dependencies but
+# still keep each service in its own container (12-factor style).
+#
+# Usage:
+#   docker compose up -d
+#
+# Override SDK_KEY before starting in production:
+#   SDK_KEY=my-secret docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sidekick-postgres
+    environment:
+      POSTGRES_USER: sidekick
+      POSTGRES_PASSWORD: sidekick
+      POSTGRES_DB: sidekick
+    ports:
+      - "5432:5432"
+    volumes:
+      - sidekick_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sidekick -d sidekick"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sidekick-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - sidekick_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  sidekick:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: sidekick:server
+    container_name: sidekick-server
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://sidekick:sidekick@postgres/sidekick
+      REDIS_URL: redis://redis:6379
+      SDK_KEY: ${SDK_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  sidekick_pg_data:
+  sidekick_redis_data:
