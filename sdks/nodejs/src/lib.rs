@@ -4,7 +4,7 @@
 extern crate napi_derive;
 
 use napi::bindgen_prelude::*;
-use sidekick_core::evaluator::{evaluate, Flag, UserContext};
+use sidekick_core::evaluator::{Flag, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
 use std::collections::HashMap;
 use std::sync::Arc;

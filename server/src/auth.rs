@@ -1,10 +1,10 @@
+use crate::state::AppState;
 use axum::{
     extract::State,
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,
 };
-use crate::state::AppState;
 
 /// Validates the SDK key from either:
 ///   - `Authorization: Bearer <key>` header  (Node.js, Flutter, React Native)

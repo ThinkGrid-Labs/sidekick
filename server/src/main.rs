@@ -3,12 +3,12 @@ mod auth;
 mod state;
 mod stream;
 
-use axum::{middleware, routing::get, Router};
-use tower_http::services::{ServeDir, ServeFile};
+use axum::{Router, middleware, routing::get};
 use sidekick_core::store::FlagStore;
-use sqlx::{postgres::PgPoolOptions, Row};
+use sqlx::{Row, postgres::PgPoolOptions};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tower_http::services::{ServeDir, ServeFile};
 use tracing::{info, warn};
 
 #[tokio::main]
@@ -38,8 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
 
     // Connect to Redis
-    let redis_url = std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://localhost:6379".to_string());
+    let redis_url =
+        std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
     let redis_client = redis::Client::open(redis_url)?;
     let mut _test_conn = redis_client.get_multiplexed_async_connection().await?;
     info!("Connected to Redis.");
@@ -80,8 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Static dashboard — served at GET / (falls back to index.html for SPA routing)
     let public_dir = std::env::var("PUBLIC_DIR").unwrap_or_else(|_| "public".to_string());
-    let serve_dashboard = ServeDir::new(&public_dir)
-        .fallback(ServeFile::new(format!("{}/index.html", public_dir)));
+    let serve_dashboard =
+        ServeDir::new(&public_dir).fallback(ServeFile::new(format!("{}/index.html", public_dir)));
 
     // Build Axum app — auth middleware wraps API + stream routes only
     let app = Router::new()
