@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  ignoreDeadLinks: [/^http:\/\/localhost/],
   title: 'Sidekick',
   description:
     'Open-source self-hosted feature flag engine with sub-microsecond local evaluation. Native SDKs for Node.js, React Native, Flutter, and browsers via WebAssembly.',
