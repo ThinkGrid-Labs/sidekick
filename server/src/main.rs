@@ -74,9 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(FlagStore::new());
 
     // Load existing flags into in-memory store from Postgres
-    let records = sqlx::query("SELECT data FROM flags")
-        .fetch_all(&db)
-        .await?;
+    let records = sqlx::query("SELECT data FROM flags").fetch_all(&db).await?;
     let mut count = 0;
     for rec in records {
         let data: serde_json::Value = rec.try_get("data")?;
@@ -172,12 +170,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ServeDir::new(&public_dir).fallback(ServeFile::new(format!("{public_dir}/index.html")));
 
     // API routes: 64 KB body limit + per-IP rate limiting
-    let api_router = api::router()
-        .layer(DefaultBodyLimit::max(65_536))
-        .layer(middleware::from_fn_with_state(
-            app_state.clone(),
-            rate_limit::rate_limit,
-        ));
+    let api_router =
+        api::router()
+            .layer(DefaultBodyLimit::max(65_536))
+            .layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                rate_limit::rate_limit,
+            ));
 
     let app = Router::new()
         .nest("/api", api_router)

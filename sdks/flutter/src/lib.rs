@@ -143,7 +143,11 @@ pub unsafe extern "C" fn sidekick_is_enabled_ctx(
         None => return 0,
     };
     let ctx = unsafe { &*ctx };
-    if evaluate(flag.as_ref(), &ctx.inner) { 1 } else { 0 }
+    if evaluate(flag.as_ref(), &ctx.inner) {
+        1
+    } else {
+        0
+    }
 }
 
 /// Release a context handle. Passing NULL is safe and is a no-op.
@@ -198,5 +202,9 @@ pub unsafe extern "C" fn sidekick_is_enabled(
         attributes,
     };
 
-    if evaluate(flag.as_ref(), &ctx) { 1 } else { 0 }
+    if evaluate(flag.as_ref(), &ctx) {
+        1
+    } else {
+        0
+    }
 }

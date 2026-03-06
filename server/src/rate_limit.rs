@@ -11,9 +11,9 @@ pub type IpRateLimiter = Arc<DefaultKeyedRateLimiter<IpAddr>>;
 
 /// 60 requests per minute per source IP on all API routes.
 pub fn new_rate_limiter() -> IpRateLimiter {
-    Arc::new(RateLimiter::keyed(
-        Quota::per_minute(NonZeroU32::new(60).unwrap()),
-    ))
+    Arc::new(RateLimiter::keyed(Quota::per_minute(
+        NonZeroU32::new(60).unwrap(),
+    )))
 }
 
 pub async fn rate_limit(
