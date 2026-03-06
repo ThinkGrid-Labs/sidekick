@@ -6,30 +6,35 @@
 //!
 //! Compile as `staticlib` (iOS) or `cdylib` (Android / desktop).
 
-use std::ffi::{c_char, CStr};
-use std::sync::LazyLock;
-use std::collections::HashMap;
-use sidekick_core::evaluator::{evaluate, Flag, TargetingRule, UserContext};
+use sidekick_core::evaluator::{Flag, TargetingRule, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
+use std::collections::HashMap;
+use std::ffi::{CStr, c_char};
+use std::sync::LazyLock;
 
 static STORE: LazyLock<FlagStore> = LazyLock::new(FlagStore::new);
 
 /// Upsert a flag into the in-process cache.
 ///
 /// # Arguments
-/// - `key`               — Null-terminated flag key.
-/// - `is_enabled`        — Global kill-switch.
-/// - `rollout_percentage`— 0-100, or -1 for "no rollout cap" (effectively 100%).
-/// - `rules_json`        — Null-terminated JSON array of targeting rules.
-///                         Pass NULL or `"[]"` when there are no rules.
-#[no_mangle]
-pub extern "C" fn sidekick_upsert_flag(
+/// - `key` — Null-terminated flag key.
+/// - `is_enabled` — Global kill-switch.
+/// - `rollout_percentage` — 0-100, or -1 for "no rollout cap" (effectively 100%).
+/// - `rules_json` — Null-terminated JSON array of targeting rules.
+///   Pass NULL or `"[]"` when there are no rules.
+///
+/// # Safety
+/// All pointer arguments must be valid, non-dangling, null-terminated C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sidekick_upsert_flag(
     key: *const c_char,
     is_enabled: bool,
     rollout_percentage: i32,
     rules_json: *const c_char,
 ) {
-    let key = unsafe { CStr::from_ptr(key) }.to_string_lossy().into_owned();
+    let key = unsafe { CStr::from_ptr(key) }
+        .to_string_lossy()
+        .into_owned();
 
     let rules: Vec<TargetingRule> = if !rules_json.is_null() {
         let json = unsafe { CStr::from_ptr(rules_json) }.to_string_lossy();
@@ -54,14 +59,17 @@ pub extern "C" fn sidekick_upsert_flag(
 }
 
 /// Remove a flag from the in-process cache.
-#[no_mangle]
-pub extern "C" fn sidekick_delete_flag(key: *const c_char) {
+///
+/// # Safety
+/// `key` must be a valid, non-dangling, null-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sidekick_delete_flag(key: *const c_char) {
     let key = unsafe { CStr::from_ptr(key) }.to_string_lossy();
     STORE.delete_flag(&key);
 }
 
 /// Clear the entire cache (call before re-bootstrapping on SSE reconnect).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sidekick_clear_store() {
     STORE.clear();
 }
@@ -69,21 +77,26 @@ pub extern "C" fn sidekick_clear_store() {
 /// Evaluate a flag for a given user.
 ///
 /// # Arguments
-/// - `flag_key`        — Null-terminated flag key.
-/// - `user_key`        — Null-terminated stable user identifier.
-/// - `attributes_json` — Null-terminated JSON object of string→string attributes.
-///                       Pass NULL or `"{}"` for no attributes.
+/// - `flag_key` — Null-terminated flag key.
+/// - `user_key` — Null-terminated stable user identifier.
+/// - `attributes_json` — Null-terminated JSON object of string->string attributes.
+///   Pass NULL or `"{}"` for no attributes.
 ///
 /// # Returns
 /// `1` if the flag is enabled for this user, `0` otherwise.
-#[no_mangle]
-pub extern "C" fn sidekick_is_enabled(
+///
+/// # Safety
+/// All pointer arguments must be valid, non-dangling, null-terminated C strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sidekick_is_enabled(
     flag_key: *const c_char,
     user_key: *const c_char,
     attributes_json: *const c_char,
 ) -> i32 {
     let flag_key = unsafe { CStr::from_ptr(flag_key) }.to_string_lossy();
-    let user_key = unsafe { CStr::from_ptr(user_key) }.to_string_lossy().into_owned();
+    let user_key = unsafe { CStr::from_ptr(user_key) }
+        .to_string_lossy()
+        .into_owned();
 
     let flag = match STORE.get_flag(&flag_key) {
         Some(f) => f,

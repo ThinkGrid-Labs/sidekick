@@ -1,5 +1,4 @@
-use serde_wasm_bindgen;
-use sidekick_core::evaluator::{evaluate, Flag, UserContext};
+use sidekick_core::evaluator::{Flag, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,6 +7,12 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct SidekickCoreWasm {
     store: Arc<FlagStore>,
+}
+
+impl Default for SidekickCoreWasm {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[wasm_bindgen]
@@ -55,7 +60,6 @@ impl SidekickCoreWasm {
     }
 
     /// Evaluate a flag for a specific user.
-    /// Passes JS Object user_attributes via serde_wasm_bindgen.
     #[wasm_bindgen]
     pub fn is_enabled(
         &self,
@@ -65,14 +69,11 @@ impl SidekickCoreWasm {
     ) -> bool {
         let flag = match self.store.get_flag(&flag_key) {
             Some(f) => f,
-            None => return false, // Default fallback if flag not found locally
+            None => return false,
         };
 
         let attributes: HashMap<String, String> =
-            match serde_wasm_bindgen::from_value(user_attributes_js) {
-                Ok(attrs) => attrs,
-                Err(_) => HashMap::new(), // If unparseable, evaluate with empty attributes
-            };
+            serde_wasm_bindgen::from_value(user_attributes_js).unwrap_or_default();
 
         let ctx = UserContext {
             key: user_key,

@@ -1,10 +1,10 @@
+use crate::state::AppState;
 use axum::{
     extract::State,
     response::sse::{Event, KeepAlive, Sse},
 };
 use futures_util::stream::Stream;
 use std::{convert::Infallible, time::Duration};
-use crate::state::AppState;
 use tokio_stream::StreamExt;
 use tracing::info;
 
