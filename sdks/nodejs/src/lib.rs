@@ -83,6 +83,6 @@ impl SidekickCore {
             attributes: user_attributes,
         };
 
-        evaluate(&flag, &ctx)
+        evaluate(flag.as_ref(), &ctx)
     }
 }

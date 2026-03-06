@@ -5,41 +5,53 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use constant_time_eq::constant_time_eq;
 
 /// Validates the SDK key from either:
-///   - `Authorization: Bearer <key>` header  (Node.js, Flutter, React Native)
-///   - `?sdk_key=<key>` query parameter       (Browser EventSource — can't send headers)
+///   - `Authorization: Bearer <key>` header  (Node.js, Flutter, React Native — preferred)
+///   - `?sdk_key=<key>` query parameter       (Browser EventSource — cannot set custom headers)
 ///
-/// If `SDK_KEY` is not set in the environment, auth is skipped (dev convenience).
+/// SECURITY: The `?sdk_key=` fallback exposes the key in URLs recorded by proxies and
+/// access logs. In production, suppress `/stream?sdk_key=*` from log pipelines and
+/// rotate the key regularly. Prefer the Authorization header wherever possible.
+///
+/// Key comparison uses constant-time equality to prevent timing-based brute-force.
+///
+/// If `SDK_KEY` is not set, auth is skipped (local dev only — always set in production).
 pub async fn require_auth(
     State(state): State<AppState>,
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Skip auth entirely when no key is configured (local dev)
     let Some(ref expected) = state.sdk_key else {
         return Ok(next.run(req).await);
     };
 
-    // Check Authorization header first
+    let expected_bytes = expected.as_bytes();
+
+    // Preferred: Authorization header (key not recorded in access logs)
     let header_key = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
 
-    if header_key == Some(expected.as_str()) {
-        return Ok(next.run(req).await);
+    if let Some(key) = header_key {
+        if constant_time_eq(key.as_bytes(), expected_bytes) {
+            return Ok(next.run(req).await);
+        }
     }
 
-    // Fall back to ?sdk_key= query param (for browser SSE which can't set headers)
+    // Fallback: ?sdk_key= query param for browser EventSource (key appears in access logs)
     let query = req.uri().query().unwrap_or("");
     let query_key = query
         .split('&')
         .find_map(|pair| pair.strip_prefix("sdk_key="));
 
-    if query_key == Some(expected.as_str()) {
-        return Ok(next.run(req).await);
+    if let Some(key) = query_key {
+        if constant_time_eq(key.as_bytes(), expected_bytes) {
+            return Ok(next.run(req).await);
+        }
     }
 
     Err(StatusCode::UNAUTHORIZED)

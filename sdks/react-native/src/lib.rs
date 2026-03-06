@@ -6,14 +6,32 @@
 //!
 //! A global `FlagStore` singleton is used because C FFI functions are
 //! stateless — the JS side holds no Rust handles.
+//!
+//! ## Performance API
+//!
+//! For hot paths (evaluating multiple flags for the same user), use the context
+//! API to parse user attributes **once** and reuse the handle across calls:
+//!
+//! ```c
+//! SidekickContext* ctx = sidekick_make_context("user-123", "{\"plan\":\"pro\"}");
+//! int flag_a = sidekick_is_enabled_ctx("feature-a", ctx);
+//! int flag_b = sidekick_is_enabled_ctx("feature-b", ctx);
+//! sidekick_free_context(ctx);
+//! ```
 
-use sidekick_core::evaluator::{evaluate, Flag, TargetingRule, UserContext};
+use sidekick_core::evaluator::{Flag, TargetingRule, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::sync::LazyLock;
 
 static STORE: LazyLock<FlagStore> = LazyLock::new(FlagStore::new);
+
+/// Opaque handle holding a pre-parsed user context.
+/// Obtain via `sidekick_make_context`, release via `sidekick_free_context`.
+pub struct SidekickContext {
+    inner: UserContext,
+}
 
 /// Upsert a flag into the in-memory store.
 ///
@@ -50,14 +68,13 @@ pub unsafe extern "C" fn sidekick_upsert_flag(
         Some(rollout_percentage.min(100) as u32)
     };
 
-    let flag = Flag {
+    STORE.upsert_flag(Flag {
         key,
         is_enabled,
         rollout_percentage: rollout,
         description: None,
         rules,
-    };
-    STORE.upsert_flag(flag);
+    });
 }
 
 /// Remove a flag from the in-memory store.
@@ -76,16 +93,81 @@ pub extern "C" fn sidekick_clear_store() {
     STORE.clear();
 }
 
-/// Evaluate a flag for a given user.
+// ---------------------------------------------------------------------------
+// Context-based API — parse attributes once, evaluate many flags cheaply
+// ---------------------------------------------------------------------------
+
+/// Parse a user key and attributes JSON into an opaque context handle.
 ///
-/// # Arguments
-/// - `flag_key` — null-terminated flag key
-/// - `user_key` — null-terminated stable user identifier
-/// - `attributes_json` — null-terminated JSON object of user attributes.
-///   Pass `"{}"` or NULL for no attributes.
+/// Returns a heap-allocated pointer the caller owns.
+/// Must be released with `sidekick_free_context`.
 ///
-/// # Returns
-/// `1` if the flag is enabled for this user, `0` otherwise.
+/// # Safety
+/// All pointer arguments must be valid, non-dangling, null-terminated C strings.
+#[no_mangle]
+pub unsafe extern "C" fn sidekick_make_context(
+    user_key: *const c_char,
+    attributes_json: *const c_char,
+) -> *mut SidekickContext {
+    let user_key = unsafe { CStr::from_ptr(user_key) }
+        .to_string_lossy()
+        .into_owned();
+
+    let attributes: HashMap<String, String> = if !attributes_json.is_null() {
+        let json = unsafe { CStr::from_ptr(attributes_json) }.to_string_lossy();
+        serde_json::from_str(&json).unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+
+    Box::into_raw(Box::new(SidekickContext {
+        inner: UserContext {
+            key: user_key,
+            attributes,
+        },
+    }))
+}
+
+/// Evaluate a flag using a pre-parsed context handle. Returns `1` if enabled, `0` otherwise.
+///
+/// # Safety
+/// - `flag_key` must be a valid, non-dangling, null-terminated C string.
+/// - `ctx` must be a non-null pointer from `sidekick_make_context` that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn sidekick_is_enabled_ctx(
+    flag_key: *const c_char,
+    ctx: *const SidekickContext,
+) -> i32 {
+    let flag_key = unsafe { CStr::from_ptr(flag_key) }.to_string_lossy();
+    let flag = match STORE.get_flag(&flag_key) {
+        Some(f) => f,
+        None => return 0,
+    };
+    let ctx = unsafe { &*ctx };
+    if evaluate(flag.as_ref(), &ctx.inner) { 1 } else { 0 }
+}
+
+/// Release a context handle. Passing NULL is safe and is a no-op.
+///
+/// # Safety
+/// `ctx` must be a pointer from `sidekick_make_context` that has not already been freed.
+#[no_mangle]
+pub unsafe extern "C" fn sidekick_free_context(ctx: *mut SidekickContext) {
+    if !ctx.is_null() {
+        drop(unsafe { Box::from_raw(ctx) });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy single-call API (parses attributes JSON on every invocation)
+// ---------------------------------------------------------------------------
+
+/// Evaluate a flag for a given user. Parses `attributes_json` on every call.
+///
+/// Prefer `sidekick_make_context` + `sidekick_is_enabled_ctx` when evaluating
+/// multiple flags for the same user.
+///
+/// # Returns `1` if enabled, `0` otherwise.
 ///
 /// # Safety
 /// All pointer arguments must be valid, non-dangling, null-terminated C strings.
@@ -117,9 +199,5 @@ pub unsafe extern "C" fn sidekick_is_enabled(
         attributes,
     };
 
-    if evaluate(&flag, &ctx) {
-        1
-    } else {
-        0
-    }
+    if evaluate(flag.as_ref(), &ctx) { 1 } else { 0 }
 }

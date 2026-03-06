@@ -8,6 +8,14 @@ PG_USER="${POSTGRES_USER:-sidekick}"
 PG_PASSWORD="${POSTGRES_PASSWORD:-sidekick}"
 PG_DB="${POSTGRES_DB:-sidekick}"
 
+if [ "${PG_PASSWORD}" = "sidekick" ]; then
+  echo "[warn] POSTGRES_PASSWORD is set to the default value 'sidekick'. Set a strong password in production."
+fi
+
+if [ -z "${SDK_KEY:-}" ]; then
+  echo "[warn] SDK_KEY is not set. API authentication is disabled. Set SDK_KEY in production."
+fi
+
 # ---------------------------------------------------------------------------
 # 1. Initialise PostgreSQL data directory (first boot only)
 # ---------------------------------------------------------------------------
@@ -28,17 +36,29 @@ su -s /bin/sh postgres -c "psql -U '$PG_USER' -tc \"SELECT 1 FROM pg_database WH
 echo "[init] PostgreSQL ready."
 
 # ---------------------------------------------------------------------------
-# 3. Start Redis
+# 3. Start Redis (with optional password)
 # ---------------------------------------------------------------------------
 echo "[init] Starting Redis..."
-redis-server --daemonize yes --logfile /var/log/redis.log --appendonly yes
+REDIS_ARGS="--daemonize yes --logfile /var/log/redis.log --appendonly yes"
+if [ -n "${REDIS_PASSWORD:-}" ]; then
+  REDIS_ARGS="${REDIS_ARGS} --requirepass ${REDIS_PASSWORD}"
+  echo "[init] Redis password authentication enabled."
+else
+  echo "[warn] REDIS_PASSWORD is not set. Redis is running without authentication."
+fi
+# shellcheck disable=SC2086
+redis-server ${REDIS_ARGS}
 echo "[init] Redis ready."
 
 # ---------------------------------------------------------------------------
 # 4. Export connection strings for the server
 # ---------------------------------------------------------------------------
 export DATABASE_URL="postgres://${PG_USER}:${PG_PASSWORD}@127.0.0.1/${PG_DB}"
-export REDIS_URL="redis://127.0.0.1:6379"
+if [ -n "${REDIS_PASSWORD:-}" ]; then
+  export REDIS_URL="redis://:${REDIS_PASSWORD}@127.0.0.1:6379"
+else
+  export REDIS_URL="redis://127.0.0.1:6379"
+fi
 export PUBLIC_DIR="${PUBLIC_DIR:-/app/public}"
 
 # SDK_KEY and PORT are passed in via docker run -e / docker-compose env
