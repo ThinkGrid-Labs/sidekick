@@ -18,14 +18,16 @@ static STORE: LazyLock<FlagStore> = LazyLock::new(FlagStore::new);
 /// Upsert a flag into the in-memory store.
 ///
 /// # Arguments
-/// - `key`               — null-terminated flag key
-/// - `is_enabled`        — global kill-switch
-/// - `rollout_percentage`— 0-100, or -1 to mean "no rollout limit" (100%)
-/// - `rules_json`        — null-terminated JSON array of targeting rules,
-///                         e.g. `[{"attribute":"email","operator":"EndsWith","values":["@acme.com"]}]`
-///                         Pass `"[]"` or NULL when there are no rules.
+/// - `key` — null-terminated flag key
+/// - `is_enabled` — global kill-switch
+/// - `rollout_percentage` — 0-100, or -1 to mean "no rollout limit" (100%)
+/// - `rules_json` — null-terminated JSON array of targeting rules.
+///   Pass `"[]"` or NULL when there are no rules.
+///
+/// # Safety
+/// All pointer arguments must be valid, non-dangling, null-terminated C strings.
 #[no_mangle]
-pub extern "C" fn sidekick_upsert_flag(
+pub unsafe extern "C" fn sidekick_upsert_flag(
     key: *const c_char,
     is_enabled: bool,
     rollout_percentage: i32,
@@ -59,8 +61,11 @@ pub extern "C" fn sidekick_upsert_flag(
 }
 
 /// Remove a flag from the in-memory store.
+///
+/// # Safety
+/// `key` must be a valid, non-dangling, null-terminated C string.
 #[no_mangle]
-pub extern "C" fn sidekick_delete_flag(key: *const c_char) {
+pub unsafe extern "C" fn sidekick_delete_flag(key: *const c_char) {
     let key = unsafe { CStr::from_ptr(key) }.to_string_lossy();
     STORE.delete_flag(&key);
 }
@@ -74,16 +79,18 @@ pub extern "C" fn sidekick_clear_store() {
 /// Evaluate a flag for a given user.
 ///
 /// # Arguments
-/// - `flag_key`        — null-terminated flag key
-/// - `user_key`        — null-terminated stable user identifier
-/// - `attributes_json` — null-terminated JSON object of user attributes,
-///                       e.g. `{"email":"u@acme.com","country":"US"}`.
-///                       Pass `"{}"` or NULL for no attributes.
+/// - `flag_key` — null-terminated flag key
+/// - `user_key` — null-terminated stable user identifier
+/// - `attributes_json` — null-terminated JSON object of user attributes.
+///   Pass `"{}"` or NULL for no attributes.
 ///
 /// # Returns
 /// `1` if the flag is enabled for this user, `0` otherwise.
+///
+/// # Safety
+/// All pointer arguments must be valid, non-dangling, null-terminated C strings.
 #[no_mangle]
-pub extern "C" fn sidekick_is_enabled(
+pub unsafe extern "C" fn sidekick_is_enabled(
     flag_key: *const c_char,
     user_key: *const c_char,
     attributes_json: *const c_char,

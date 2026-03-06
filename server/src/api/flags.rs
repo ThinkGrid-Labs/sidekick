@@ -3,7 +3,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, patch, post},
+    routing::get,
 };
 use redis::AsyncCommands;
 use serde_json::json;
@@ -114,7 +114,7 @@ async fn patch_flag(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // JSON merge: overwrite only the keys present in the patch body.
-    if let (serde_json::Value::Object(ref mut map), serde_json::Value::Object(patch_map)) =
+    if let (serde_json::Value::Object(map), serde_json::Value::Object(patch_map)) =
         (&mut flag_val, patch)
     {
         for (k, v) in patch_map {
