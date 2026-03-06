@@ -5,38 +5,40 @@ use axum::{
 };
 use futures_util::stream::Stream;
 use std::{convert::Infallible, time::Duration};
-use tokio_stream::StreamExt;
-use tracing::info;
+use tokio::sync::broadcast;
+use tracing::{info, warn};
 
 pub async fn sse_handler(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     info!("New SDK client connected via SSE");
 
-    let stream = async_stream::stream! {
-        // 1. Subscribe to Redis FIRST — ensures no delta published between bootstrap
-        //    and subscription can be missed.
-        let mut con = state.redis_client
-            .get_async_pubsub()
-            .await
-            .expect("Failed to get pubsub connection");
-        con.subscribe("sidekick_updates").await.expect("Failed to subscribe to sidekick_updates");
-        let mut msg_stream = con.into_on_message();
+    // Subscribe BEFORE bootstrap so no update can slip through between the
+    // snapshot and the live stream. No per-client Redis connection is opened.
+    let mut rx = state.flag_tx.subscribe();
 
-        // 2. Signal connection established (SDK clears its local cache on this event
-        //    so the full state below replaces any stale entries).
+    let stream = async_stream::stream! {
+        // 1. Signal connection established — SDK clears its local cache on this event.
         yield Ok(Event::default().event("connected").data("true"));
 
-        // 3. Send the complete current flag set so the SDK rebuilds from a clean state.
+        // 2. Bootstrap: replay the full flag set so the SDK starts from a clean state.
         for flag in state.store.list_flags() {
             let payload = serde_json::json!({"type": "UPSERT", "flag": flag}).to_string();
             yield Ok(Event::default().event("update").data(payload));
         }
 
-        // 4. Forward live delta updates from Redis pub/sub.
-        while let Some(msg) = msg_stream.next().await {
-            if let Ok(payload) = msg.get_payload::<String>() {
-                yield Ok(Event::default().event("update").data(payload));
+        // 3. Stream live deltas from the shared broadcast channel.
+        loop {
+            match rx.recv().await {
+                Ok(payload) => {
+                    yield Ok(Event::default().event("update").data(payload));
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    // Client is too slow; force a reconnect so it re-bootstraps cleanly.
+                    warn!("SSE client lagged, missed {n} updates — closing for reconnect");
+                    break;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
             }
         }
     };

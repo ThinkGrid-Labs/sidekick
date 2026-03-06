@@ -1,12 +1,19 @@
+use crate::rate_limit::IpRateLimiter;
 use sidekick_core::store::FlagStore;
 use sqlx::PgPool;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
     pub redis_client: redis::Client,
-    pub store: Arc<FlagStore>, // Holds the in-memory state of the latest flags across all environments
-    /// SDK key for bearer-token auth. `None` disables auth (dev mode).
+    pub store: Arc<FlagStore>,
+    /// Broadcast channel: the single Redis subscriber task sends flag update payloads
+    /// here; each SSE handler subscribes instead of opening its own Redis connection.
+    pub flag_tx: broadcast::Sender<String>,
+    /// SDK key for bearer-token auth. `None` disables auth (dev mode only).
     pub sdk_key: Option<String>,
+    /// Per-IP rate limiter applied to all API routes.
+    pub rate_limiter: IpRateLimiter,
 }

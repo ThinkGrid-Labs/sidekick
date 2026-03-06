@@ -80,6 +80,6 @@ impl SidekickCoreWasm {
             attributes,
         };
 
-        evaluate(&flag, &ctx)
+        evaluate(flag.as_ref(), &ctx)
     }
 }
