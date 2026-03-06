@@ -202,9 +202,5 @@ pub unsafe extern "C" fn sidekick_is_enabled(
         attributes,
     };
 
-    if evaluate(flag.as_ref(), &ctx) {
-        1
-    } else {
-        0
-    }
+    if evaluate(flag.as_ref(), &ctx) { 1 } else { 0 }
 }
