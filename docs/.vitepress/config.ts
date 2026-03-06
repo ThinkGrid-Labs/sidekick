@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  base: '/sidekick/',
   ignoreDeadLinks: [/^http:\/\/localhost/],
   title: 'Sidekick',
   description:
