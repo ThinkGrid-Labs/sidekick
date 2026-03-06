@@ -1,10 +1,16 @@
-# Sidekick
+# Sidekick — Open-Source Self-Hosted Feature Flag Engine for Node.js, React Native, Flutter & Browser
+
+[![CI](https://github.com/ThinkGrid-Labs/sidekick/actions/workflows/ci.yml/badge.svg)](https://github.com/ThinkGrid-Labs/sidekick/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![npm @sidekick-flags/node](https://img.shields.io/npm/v/@sidekick-flags/node?label=npm%20node)](https://www.npmjs.com/package/@sidekick-flags/node)
+[![npm @sidekick-flags/browser](https://img.shields.io/npm/v/@sidekick-flags/browser?label=npm%20browser)](https://www.npmjs.com/package/@sidekick-flags/browser)
+[![npm @sidekick-flags/react-native](https://img.shields.io/npm/v/@sidekick-flags/react-native?label=npm%20react-native)](https://www.npmjs.com/package/@sidekick-flags/react-native)
 
 > **⚠ Beta** — Sidekick is under active development. APIs may change between releases. Not recommended for production use without thorough testing.
 
-**Sub-microsecond feature flag evaluation. No network calls. No polling. Self-hosted.**
+**Sidekick is a self-hosted, open-source feature flag system with sub-microsecond local evaluation — no network calls, no polling, no vendor lock-in.** Built in Rust, it ships native SDKs for Node.js (NAPI), browsers (WebAssembly), React Native (JSI), and Flutter (FFI), so `isEnabled()` is always a pure in-process lookup regardless of platform. A persistent SSE stream propagates flag changes from the control plane to every connected SDK in under 50 ms — without polling.
 
-Sidekick is a high-performance feature flag and targeting engine built in Rust. Flags are evaluated **in-process** inside each SDK — completely off the network critical path — while a persistent SSE stream keeps every client synchronized in real time.
+Use Sidekick to ship faster with feature toggles, run percentage-based rollouts, and target specific users by attribute — all without your flag evaluation ever touching a remote server.
 
 ---
 
@@ -262,6 +268,7 @@ Auth is disabled by default in local dev (no `SDK_KEY` set). Set `SDK_KEY` for a
 | `DATABASE_URL` | `postgres://sidekick:password@localhost/sidekick` | PostgreSQL connection string |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
 | `SDK_KEY` | *(unset — auth disabled)* | Bearer token required on all API requests. Set this in production. |
+| `PUBLIC_DIR` | `public` | Path to built dashboard static files |
 
 The `flags` table is auto-created on startup if it does not exist.
 
@@ -327,12 +334,14 @@ The stream also emits a `connected` event (data: `"true"`) at the start of every
 
 ### Node.js
 
+Install the native Node.js SDK (NAPI — evaluation runs in compiled Rust, not JavaScript):
+
 ```bash
-npm install @sidekick/nodejs-sdk
+npm install @sidekick-flags/node
 ```
 
 ```javascript
-import { SidekickClient } from '@sidekick/nodejs-sdk';
+import { SidekickClient } from '@sidekick-flags/node';
 
 const client = new SidekickClient(
   'https://flags.yourcompany.com',
@@ -360,12 +369,14 @@ The Node.js SDK uses a **NAPI native module** — the evaluation engine is compi
 
 ### Browser (WebAssembly)
 
+Install the browser SDK (evaluation runs in WebAssembly compiled from Rust):
+
 ```bash
-npm install @sidekick/browser-sdk
+npm install @sidekick-flags/browser
 ```
 
 ```javascript
-import { SidekickBrowserClient } from '@sidekick/browser-sdk';
+import { SidekickBrowserClient } from '@sidekick-flags/browser';
 
 const client = new SidekickBrowserClient(
   'https://flags.yourcompany.com',
@@ -384,8 +395,10 @@ The browser SDK evaluates inside **WebAssembly** compiled from the same Rust cor
 
 ### React Native (JSI)
 
+Install the React Native SDK (synchronous JSI bridge — no async boundary):
+
 ```bash
-npm install @sidekick/react-native-sdk
+npm install @sidekick-flags/react-native
 cd ios && pod install
 ```
 
@@ -416,7 +429,7 @@ target_link_libraries(sidekick sidekick_rn jsi)
 
 **Usage:**
 ```javascript
-import { SidekickMobileClient } from '@sidekick/react-native-sdk';
+import { SidekickMobileClient } from '@sidekick-flags/react-native';
 
 const client = new SidekickMobileClient(
   'https://flags.yourcompany.com',
@@ -474,17 +487,28 @@ The Flutter SDK uses `dart:ffi` to call directly into the compiled Rust library 
 
 ### Docker
 
+**Server-only image** (bring your own PostgreSQL and Redis):
+
 ```bash
-docker build -t sidekick-server .
+docker build -f Dockerfile.server -t sidekick:server .
 
 docker run -p 3000:3000 \
   -e DATABASE_URL=postgres://user:pass@your-db/sidekick \
   -e REDIS_URL=redis://your-redis:6379 \
   -e SDK_KEY=sk_prod_abc123 \
-  sidekick-server
+  sidekick:server
 ```
 
-The Dockerfile uses a multi-stage build: Rust compiler stage → slim Debian runtime. The final image contains only the compiled binary and its system dependencies.
+**All-in-one image** (PostgreSQL + Redis + dashboard bundled — ideal for demos):
+
+```bash
+docker build -f Dockerfile.full -t sidekick:full .
+
+SDK_KEY=sk_prod_abc123 docker compose -f docker-compose.full.yml up -d
+# Dashboard → http://localhost:3000
+```
+
+Both images are multi-arch (`linux/amd64` + `linux/arm64`) and published to Docker Hub on every release tag.
 
 ---
 
@@ -497,7 +521,7 @@ Route 53
     ↓ HTTPS
 Application Load Balancer
     ↓
-ECS Fargate (sidekick-server)    ←→   ElastiCache Redis (pub/sub)
+ECS Fargate (sidekick:server)    ←→   ElastiCache Redis (pub/sub)
     ↓                                        ↑
 RDS Postgres (flags table)       ←── writes ─┘
 ```
@@ -520,8 +544,18 @@ aws elbv2 modify-load-balancer-attributes \
 
 | Workflow | Trigger | Action |
 |---|---|---|
-| `deploy-server.yml` | Push to `main` affecting `core/` or `server/` | Build Docker image → push to registry → rolling ECS deploy |
-| `publish-sdks.yml` | GitHub release tag created | Publish `@sidekick/nodejs-sdk` and `@sidekick/browser-sdk` to npm; Flutter SDK to pub.dev |
+| `ci.yml` | Push / PR to `main` or `dev` | Rust tests, clippy, fmt check, dashboard build |
+| `release-docker.yml` | Tag `v*.*.*` | Build multi-arch `sidekick:server` + `sidekick:full` → Docker Hub |
+| `release-sdk-nodejs.yml` | Tag `v*.*.*` | Cross-compile 7 platforms → publish `@sidekick-flags/node` to npm |
+| `release-sdk-browser.yml` | Tag `v*.*.*` | wasm-pack build → publish `@sidekick-flags/browser` to npm |
+| `release-sdk-react-native.yml` | Tag `v*.*.*` | Publish `@sidekick-flags/react-native` to npm |
+| `release-sdk-flutter.yml` | Tag `v*.*.*` | Publish `sidekick_flutter` to pub.dev |
+
+Release all SDKs and images at once:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
 
 ---
 
@@ -530,7 +564,7 @@ aws elbv2 modify-load-balancer-attributes \
 ### Running Tests
 
 ```bash
-cargo test
+cargo test --workspace
 ```
 
 Tests cover:
@@ -579,76 +613,6 @@ cargo build -p flutter --target aarch64-apple-ios --release
 ```
 
 Copy the output `.so` / `.a` into your Flutter project's native directories and reference them from `CMakeLists.txt` (Android) or your Xcode project (iOS).
-
----
-
-## Repository Structure
-
-```
-sidekick/
-├── core/                        # Shared Rust evaluation library
-│   └── src/
-│       ├── lib.rs               # Module exports
-│       ├── store.rs             # Thread-safe DashMap flag cache + list_flags()
-│       ├── evaluator.rs         # Targeting rules + rollout evaluation + tests
-│       └── hashing.rs           # MurmurHash3 (deterministic, cross-platform)
-│
-├── server/                      # REST API + SSE control plane
-│   └── src/
-│       ├── main.rs              # Startup: DB, Redis, SDK_KEY, auth middleware
-│       ├── state.rs             # Shared AppState (db, redis, store, sdk_key)
-│       ├── auth.rs              # Bearer token middleware (header + query param)
-│       ├── stream.rs            # SSE: subscribe-first, full state dump, live deltas
-│       └── api/
-│           └── flags.rs         # CRUD + PATCH endpoints
-│
-├── sdks/
-│   ├── nodejs/                  # Native NAPI module
-│   │   ├── src/lib.rs           # upsert_flag, delete_flag, clear_store, is_enabled
-│   │   └── index.js             # JS wrapper: SSE, cache management, clear-on-reconnect
-│   │
-│   ├── browser/                 # WebAssembly module
-│   │   ├── src/lib.rs           # wasm-bindgen exports
-│   │   └── index.js             # ES module wrapper: SSE, ?sdk_key= auth
-│   │
-│   ├── react-native/            # JSI native module
-│   │   ├── src/lib.rs           # extern "C" FFI exports (global LazyLock store)
-│   │   ├── cpp/
-│   │   │   ├── sidekick_core.h  # C header (matches Rust exports exactly)
-│   │   │   └── SidekickJSI.cpp  # JSI installer: JSON.stringify bridge, 4 methods
-│   │   └── index.js             # JS wrapper: SSE, clear-on-reconnect, deleteFlag
-│   │
-│   └── flutter/                 # Dart FFI module
-│       ├── src/lib.rs           # extern "C" FFI exports (global LazyLock store)
-│       └── dart/
-│           ├── sidekick_bindings.dart  # Raw dart:ffi typedefs + DynamicLibrary loader
-│           ├── sidekick_flutter.dart   # High-level client: SSE, chunked HTTP, isEnabled
-│           └── pubspec.yaml            # ffi: ^2.1.0, http: ^1.2.0
-│
-├── Dockerfile                   # Multi-stage: rust:slim → debian:slim
-├── docker-compose.yml           # Local dev: Postgres + Redis
-└── Cargo.toml                   # Workspace: core, server, nodejs, browser, flutter, react-native
-```
-
----
-
-## Dependencies
-
-| Crate | Purpose |
-|---|---|
-| `axum 0.8` | Web framework — routing, extractors, middleware |
-| `tokio` | Async runtime |
-| `sqlx` | Async PostgreSQL driver |
-| `redis` | Redis client with async pub/sub |
-| `dashmap` | Lock-free concurrent HashMap for the flag store |
-| `murmur3` | MurmurHash3 for deterministic rollout bucketing |
-| `async-stream` | Stream macro for SSE generator |
-| `serde / serde_json` | Serialization |
-| `tracing` | Structured logging |
-| `napi / napi-derive` | Node.js native addon bindings |
-| `wasm-bindgen` | WebAssembly JS interop |
-| `serde-wasm-bindgen` | Serde support for WASM JsValue |
-| `console_error_panic_hook` | Rust panics → browser console errors |
 
 ---
 
