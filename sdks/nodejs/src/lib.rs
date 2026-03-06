@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate napi_derive;
 
-use sidekick_core::evaluator::{evaluate, Flag, TargetingRule, UserContext};
+use sidekick_core::evaluator::{Flag, TargetingRule, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
 use std::collections::HashMap;
 use std::sync::Arc;

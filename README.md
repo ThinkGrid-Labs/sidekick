@@ -1,5 +1,7 @@
 # Sidekick
 
+> **⚠ Beta** — Sidekick is under active development. APIs may change between releases. Not recommended for production use without thorough testing.
+
 **Sub-microsecond feature flag evaluation. No network calls. No polling. Self-hosted.**
 
 Sidekick is a high-performance feature flag and targeting engine built in Rust. Flags are evaluated **in-process** inside each SDK — completely off the network critical path — while a persistent SSE stream keeps every client synchronized in real time.

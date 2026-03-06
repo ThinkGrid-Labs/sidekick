@@ -6,10 +6,10 @@
 //!
 //! Compile as `staticlib` (iOS) or `cdylib` (Android / desktop).
 
-use sidekick_core::evaluator::{evaluate, Flag, TargetingRule, UserContext};
+use sidekick_core::evaluator::{Flag, TargetingRule, UserContext, evaluate};
 use sidekick_core::store::FlagStore;
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::sync::LazyLock;
 
 static STORE: LazyLock<FlagStore> = LazyLock::new(FlagStore::new);
@@ -115,9 +115,5 @@ pub unsafe extern "C" fn sidekick_is_enabled(
         attributes,
     };
 
-    if evaluate(&flag, &ctx) {
-        1
-    } else {
-        0
-    }
+    if evaluate(&flag, &ctx) { 1 } else { 0 }
 }
